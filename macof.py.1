@@ -1,0 +1,405 @@
+.\" ############################################################################
+.\" ### /usr/local/share/man/man1/macof.py.1.gz BEGIN
+.\" ############################################################################
+.\"
+.\" Copyright 2017 WhiteWinterWolf (www.whitewinterwolf.com)
+.\"
+.\" This file is part of macof.py.
+.\"
+.\" macof.py is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\"
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+.\" ############################################################################
+.
+.Dd October 25, 2017
+.Dt MACOF.PY 1
+.Os macof.py
+.
+.
+.Sh NAME
+.
+.Nm macof.py
+.Nd MAC address table overflow utility
+.
+.
+.Sh SYNOPSIS
+.
+.Nm
+.Op Fl h
+.Op Fl c Ar count
+.Op Fl f Ar pps
+.Op Fl i Ar iface
+.Op Fl l Ar loop
+.Op Fl r Ar pps | Fl w Ar msec
+.Op Fl -dip Ar IP
+.Op Fl -dmac Ar MAC
+.Op Fl -dport Ar port
+.Op Fl -sip Ar IP
+.Op Fl -smac Ar MAC
+.Op Fl -sport Ar port
+.
+.
+.Sh DESCRIPTION
+.
+.Nm
+generates Ethernet frames bearing random source MAC addresses and floods the
+network with them.
+.Pp
+This effectively simulates the activity of a potentially large number of
+devices, with the goal to fill and maintain filled switches' MAC address tables
+forcing them to broadcast some of their in-transit data.
+.Pp
+Compared to existing alternatives:
+.Pp
+.Bl -bullet -offset indent
+.It
+.Nm
+allows to tune the frame emission rate to minimize the impact on the attacker's
+host and the network resources as much as possible.
+.Pp
+This offers a more reliable propagation of the forged MAC addresses throughout
+the switched network and a more efficient interception of broadcast data.
+.It
+.Nm
+generates valid frames.
+.Pp
+While non-standard frames may be silently dropped by the switches, these
+effectively update their MAC address tables.
+.It
+.Nm
+first locally pre-generates a certain amount of Ethernet frames, each with
+a unique random source MAC address, and then replays this same set of frames in
+loop for all the attack duration.
+.Pp
+This simulates genuine devices activity, forcing the switches to regularly
+reset the associated aging-timers, keeping their MAC address table filled
+without interruption.
+.El
+.Pp
+By default
+.Nm
+generates 20000 packets (TCP RST to inhibit any reply) with unique sender MAC
+addresses and floods them in loop at the rate of 5000 packets per second.
+All generated packets use by default the broadcast MAC address
+.Cm ( ff:ff:ff:ff:ff:ff )
+as destination, both as an attempt to make the flood more
+efficient and allow to easily filter them out during the network data capture.
+.Pp
+.Nm
+also allows to divide packets sending in two stages:
+.Pp
+.Bl -enum -offset indent
+.It
+The
+.Em flood
+phase is meant to be most intense: the goal here is to fill switches MAC
+tables as fast possible, usually in a few seconds.
+.It
+The
+.Em refresh
+phase is meant to be softer: the goal is to keep the MAC address tables
+filled by regularly refreshing each entry while still leaving as much
+resources as possible available for a reliable eavesdropping.
+.Pp
+Most switches have a default aging time of 5 minutes for their MAC address
+table entries, often increased by network administrators (Cisco NX-OS devices
+now use 30 minutes by default).
+In such conditions there is really no need to rush during the refresh phase.
+.El
+.Pp
+The refresh phase is not enabled by default,
+.Nm
+sending the frames at a constant rate during the whole attack.
+Check the
+.Fl r
+and
+.Fl w
+options to enable this feature.
+.
+.
+.Sh OPTIONS
+.
+.Ss General options
+The general options are as follow:
+.
+.Bl -tag -width Ds
+.It Fl h , -help
+Show usage information summary then exit.
+.
+.It Fl c Ar count , Fl -count Ar count
+Generate
+.Ar count
+different MAC addresses and packets.
+.br
+Desktop switches can usually store up 1000 or 2000 addresses.
+Enterprise switches can usually store between 5000 and 16000 addresses by
+default, however some may be configured to handle larger tables.
+.br
+.Nm
+ensures that each packet uses a different MAC address (no duplicates).
+.br
+Default value: 20000.
+.
+.It Fl f Ar pps , Fl -fspeed Ar pps
+Send
+.Ar pps
+packets per second during the initial flooding phase.
+.br
+Usually this phase is quite intense to fill switches MAC address tables in a
+few seconds.
+.br
+This feature relies on
+.Xr tcpreplay 1
+to send the frames over the network.
+.br
+Default value: 5000.
+.
+.It Fl i Ar iface , Fl -iface Ar iface
+Output interface name.
+.br
+Use this options if your system has several network interfaces.
+.br
+By default the first network interface found is used.
+.
+.It Fl l Ar loop , Fl -loop Ar loop
+Send all packets
+.Ar loop
+times then exit.
+.br
+.Ar loop
+must be a positive integer.
+.br
+By default
+.Nm
+loops endlessly on the same set of forged frames and must be stopped manually
+(Ctrl+C).
+.
+.It Fl r Ar pps , Fl -rspeed Ar pps
+Send
+.Ar pps
+packets per second during the refresh phase.
+.br
+This option is usually set to a lower value than
+.Fl f .
+.br
+This feature relies on
+.Xr tcpreplay 1
+to send the frames over the network.
+This allows faster and more predictable sending rates, but uses more CPU
+resources (typically an internal loop occupying 100% of one CPU core
+independently of the selected speed).
+See
+.Fl w
+for lower resources consumption.
+.br
+This option is not compatible with
+.Fl w .
+.br
+No refresh phase is enabled by default (constant sending rate).
+.
+.It Fl w Ar msec , Fl -wait Ar msec
+Wait at least
+.Ar msec
+milliseconds between each packet sent during the refresh phase.
+.br
+This feature invoke
+.Fn sleep
+between each sent frame.
+Sending rates are slower and less predictable than when using
+.Xr tcpreplay 1 ,
+but longer sleep times significantly reduces CPU consumption.
+.br
+This option is not compatible with
+.Fl r .
+In doubt, prefer to use
+.Fl w
+over
+.Fl r .
+.br
+No refresh phase is enabled by default (constant sending rate).
+.El
+.
+.Ss Packets creation options
+.
+Packets creation options can be used to tune forged packets to your local
+environment and needs.
+They can also be used to better identify and filter-out flood-related packets
+while capturing network traffic.
+.Pp
+Short form options are proposed for compatibility with the historical
+.Xr macof 1
+implementation.
+.Pp
+Packet creation options are as follow:
+.
+.Bl -tag -width Ds
+.It Fl -dip Ar ip , Fl d Ar ip
+Destination IP address.
+.br
+CIDR notation is allowed to randomize only parts of the IP address (see the
+.Sx EXAMPLES
+section below).
+.br
+No uniqueness checking is done (several packets may share the same IP address
+with different MAC addresses).
+.br
+Default value:
+.Sq 0.0.0.0/0
+(fully randomized destination IP address).
+.
+.It Fl -dmac Ar mac , Fl e Ar mac
+Destination MAC address.
+.br
+Bytes can be replaced by the
+.Sq *
+characters to randomize only part the MAC address (see the
+.Sx EXAMPLE
+section below).
+.br
+Default value:
+.Sq ff:ff:ff:ff:ff:ff
+(Ethernet broadcast address, this guaranties the best propagation of the flood,
+but might stand-out in the eyes of an IDS).
+.
+.It Fl -dport Ar port , Fl y Ar port
+Destination port number.
+.br
+.Ar port
+must belong to the range [0-65535].
+.br
+By default a random number belonging to the range [32768-60099] (the default
+Linux default ephemeral port range) is chosen for each packet.
+.
+.It Fl -sip Ar ip , Fl s Ar ip
+Source IP address.
+.br
+CIDR notation is allowed to randomize only parts of the IP address (see the
+.Sx EXAMPLES
+section below).
+.Pp
+.Em Warning :
+If you use a valid range for your LAN, on some operating systems (Windows)
+users having the same IP as forged frames may see a popup warning them that
+.Dq Another computer on this network has the same IP address as this computer .
+.Pp
+No uniqueness checking is done (several packets may share the same IP address
+with different MAC addresses).
+.br
+Default value:
+.Sq 0.0.0.0/0
+(fully randomized source IP address).
+.
+.It Fl -smac Ar mac
+Source MAC address.
+.br
+Bytes can be replaced by the
+.Sq *
+characters to randomize only part the MAC address (see the
+.Sx EXAMPLE
+section below).
+.Pp
+.Em Warning :
+.Nm
+ensures that there is no duplicate in the generated MAC addresses, if the
+provided mask is to narrow for the number of addresses the command will fail.
+.Pp
+Default value:
+.Sq *:*:*:*:*:*
+(fully randomized source MAC address).
+.
+.It Fl -sport Ar port , Fl x Ar port
+Source port number.
+.br
+.Ar port
+must belong to the range [0-65535].
+.br
+By default a random number belonging to the range [32768-60099] (the default
+Linux default ephemeral port range) is chosen for each packet.
+.El
+.
+.
+.Sh EXIT STATUS
+.
+.Ex -std
+.
+.
+.Sh EXAMPLES
+.
+.Bl -inset
+.It Example 1:
+Usually default parameters are just fine, simply launch
+.Nm
+without additional options:
+.Pp
+.Dl Ic macof.py
+.Pp
+.It Example 2:
+To use a non-default network device:
+.Pp
+.Dl Ic macof.py -i eth1
+.Pp
+.It Example 3:
+To lower CPU consumption, enable the refresh phase
+.Fl w
+option, here sleeping 5 ms between each packet sent:
+.Pp
+.Dl Ic macof.py -w 5
+.Pp
+.It Example 4:
+Loop 100 times then exit:
+.Pp
+.Dl Ic macof.py -l 100
+.Pp
+.It Example 5:
+Use a fixed destination MAC adress, IP and port number:
+.Pp
+.Dl Ic macof.py --dmac 'ec:44:76:d8:66:f2' --dip '172.20.3.8' --dport 445
+.Pp
+.It Example 6:
+Use a partially random source MAC and IP addresses:
+.Pp
+.Dl Ic macof.py --smac '00:16:3e:*:*:*' --sip '172.16.0.0/16'
+.Pp
+.El
+.
+.
+.Sh REPORTING BUGS
+.
+Please send bug reports to the
+.Lk http://github.com/WhiteWinterWolf/macof.py/issues "macof.py issues page" .
+.
+.
+.Sh HISTORY
+.
+.Nm
+is based on the well-known
+.Xr macof 1
+by Dug Song
+.Mt ( dugsong@monkey.org ) ,
+itself a C port of an initial Perl utility by Ian Vitek
+.Mt ( ian.vitek@infosec.se ) .
+.Pp
+An effort has been made to remain as compatible as possible by keeping the same
+single-letter options, except for the
+.Fl n
+options which is not supported by
+.Nm
+(see the
+.Fl c
+and
+.Fl l
+options instead).
+.
+.\" ############################################################################
+.\" ### /usr/local/share/man/man1/macof.py.1.gz END
+.\" ############################################################################
